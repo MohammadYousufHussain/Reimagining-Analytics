@@ -1,0 +1,16 @@
+CustomerName,Sector,PrimaryCurrency,FXTxnVolume,Countries,IsTradeCustomer,RelationshipScore
+Alpha Industries,Manufacturing,USD,3250000,China,Yes,0.82
+BluePeak Retail,Retail,AED,1450000,India,No,0.58
+Carbon Energy,Energy,USD,4890000,UAE,Yes,0.91
+Delta Tech,Technology,EUR,2150000,Germany,Yes,0.73
+Emerald Health,Healthcare,GBP,1750000,UK,No,0.55
+Falcon Manufacturing,Manufacturing,USD,980000,India,No,0.62
+Global Traders,Retail,CNY,3150000,China,Yes,0.67
+Horizon Energy,Energy,USD,2750000,KSA,Yes,0.69
+Infinity Systems,Technology,EUR,1950000,Germany,No,0.48
+Jetline Logistics,Retail,AED,2100000,UAE,Yes,0.71
+Keystone Holdings,Manufacturing,GBP,1250000,UK,No,0.59
+Lunar Health,Healthcare,USD,980000,India,No,0.46
+Mercury Tech,Technology,USD,3680000,China,Yes,0.84
+Nova Petro,Energy,EUR,4220000,Germany,Yes,0.77
+Orion Imports,Retail,CNY,1590000,China,No,0.52
