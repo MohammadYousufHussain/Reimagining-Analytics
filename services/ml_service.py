@@ -70,7 +70,7 @@ def train_multiple_models(df, target_col, train_pct, test_pct, progress_callback
     models = {
         "Random Forest": RandomForestClassifier(n_estimators=200, random_state=42),
         "Gradient Boosting": GradientBoostingClassifier(random_state=42),
-        "XGBoost": XGBClassifier(eval_metric="logloss", random_state=42),
+        #"XGBoost": XGBClassifier(eval_metric="logloss", random_state=42),
         "Logistic Regression": LogisticRegression(max_iter=1000),
         "SVM": SVC(probability=True),
         "KNN": KNeighborsClassifier()
