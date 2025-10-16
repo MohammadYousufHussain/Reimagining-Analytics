@@ -3,6 +3,11 @@ import random
 import os
 import numpy as np
 import random
+from sklearn.model_selection import train_test_split
+
+# Central state dictionary accessible by all services
+shared_state = {}
+
 
 def get_shared_dataset():
     if "trade_df" not in globals() or "non_trade_df" not in globals():
@@ -130,7 +135,24 @@ def get_shared_dataset():
         globals()["non_trade_df"] = pd.DataFrame(non_trade_data, columns=column_names)
         globals()["comb_df"] = pd.concat([trade_df[:500], non_trade_df[:500],trade_df[500:], non_trade_df[500:]])
 
-        flip_idx = np.random.choice(globals()["comb_df"].index, size=int(0.15 * len(globals()["comb_df"])), replace=False)
+        flip_idx = np.random.choice(globals()["comb_df"].index, size=int(0.10 * len(globals()["comb_df"])), replace=False)
         globals()["comb_df"].loc[flip_idx, "Is Trade Customer"] = globals()["comb_df"].loc[flip_idx, "Is Trade Customer"].map({"Yes": "No", "No": "Yes"})
+
+
+        # ✅ Define Out-of-Sample Backtesting Split (20%)
+        df = globals()["comb_df"]
+        y = df["Is Trade Customer"].map({"Yes": 1, "No": 0})
+        df_train, df_backtest, y_train, y_backtest = train_test_split(
+            df, y, test_size=0.2, random_state=42, stratify=y
+        )
+
+        # ✅ Limit backtest sample to avoid LLM timeouts
+        df_backtest = df_backtest.head(100)
+        y_backtest = y_backtest.head(100)
+
+        # ✅ Store in shared_state for global access
+        shared_state["df_full"] = df
+        shared_state["df_backtest"] = df_backtest
+        shared_state["y_backtest"] = y_backtest
 
     return globals()["comb_df"]

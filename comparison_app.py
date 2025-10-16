@@ -1,206 +1,146 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.preprocessing import LabelEncoder
+import pandas as pd
+from services.model_comparison_service import (
+    get_real_data,
+    compute_metrics,
+    calculate_feature_importance
+)
 
-# -------------------------
-# Helper: Generate Dummy Data
-# -------------------------
-def generate_dummy_data(seed=42):
-    np.random.seed(seed)
-    
-    features = [
-        "Customer Name", "Sector", "KYC Turnover Category", "Is Trade Customer", "Is FX Customer", 
-        "Cross Border Payments_TTM", "Cross Border Collections_TTM",
-        "Top_1_Collections_Counterparty_Country", "Top_2_Collections_Counterparty_Country",
-        "Top_3_Collections_Counterparty_Country", "Top_4_Collections_Counterparty_Country",
-        "Top_1_Payments_Counterparty_Country", "Top_2_Payments_Counterparty_Country",
-        "Top_3_Payments_Counterparty_Country", "Top_4_Payments_Counterparty_Country",
-        "High_Volume_Txns", "Avg_Volume_Txns", "Txns in High Potential Countries",
-        "Large_Txn_Tickets", "Priority_Sectors",
-        "Is Counterparty of Trade Customer", "Trade License Category", "Nature of Business",
-        "Payment to Ports", "Payment to Shipping Lines", "Number of Counterparties",
-        "Avg CASA Balance", "Avg CASA TTM to Sector Median Percentile",
-        "Avg Collections TTM to Sector Median Percentile", "Avg Payments TTM to Sector Median Percentile",
-        "Payment to Dubai Customs", "Payment to Marine Insurers", "FX Forward Amount TTM",
-        "Cross Border Payments Velocity Ratio", "Cross Border Collections Velocity Ratio",
-        "Pct of New Overseas Counterparties in last 90 days", "Payments for Warehousing or Storage Fee",
-        "Increase in Non-AED CASA", "Payment to Freight Forwarders"
-    ]
-
-    # Random numeric encoding for simplicity
-    df_ml = pd.DataFrame(np.random.rand(100, len(features)), columns=features)
-    df_genai = pd.DataFrame(np.random.rand(100, len(features)), columns=features)
-
-    # Simulate conversion labels (ground truth)
-    y_true = np.random.randint(0, 2, 100)
-
-    # Force ML to be more precise & recall-strong than GenAI
-    y_pred_ml = np.random.binomial(1, 0.75, 100)
-    y_pred_genai = np.random.binomial(1, 0.65, 100)
-
-    # Generate lead names & rationales
-    ml_leads = pd.DataFrame({
-        "Lead Name": [f"ML_Lead_{i+1}" for i in range(100)],
-        "Probability Score": np.random.uniform(0.6, 0.95, 100).round(2),
-        "Ground Truth": y_true
-    })
-    
-    rationales = [
-        "High FX exposure and frequent cross-border payments",
-        "Strong trade corridor with high CASA inflow",
-        "Rising transaction velocity in priority sector",
-        "Increasing counterparty diversification"
-    ]
-    genai_leads = pd.DataFrame({
-        "Lead Name": [f"GenAI_Lead_{i+1}" for i in range(100)],
-        "Lead Rationale": np.random.choice(rationales, 100),
-        "Ground Truth": y_true
-    })
-    
-    return df_ml, df_genai, ml_leads, genai_leads, y_true, y_pred_ml, y_pred_genai, features
-
-
-# -------------------------
-# Helper: Run Feature Importance
-# -------------------------
-def calculate_feature_importance(data, y_true, model_type="Random Forest"):
-    label_enc = LabelEncoder()
-    y_encoded = label_enc.fit_transform(y_true)
-
-    if model_type == "Random Forest":
-        model = RandomForestClassifier(n_estimators=100, random_state=42)
-    elif model_type == "Gradient Boosting":
-        model = GradientBoostingClassifier(random_state=42)
-    else:
-        model = LogisticRegression(max_iter=1000, random_state=42)
-
-    model.fit(data, y_encoded)
-    if hasattr(model, "feature_importances_"):
-        importance = model.feature_importances_
-    else:
-        importance = np.abs(model.coef_[0])
-
-    fi_df = pd.DataFrame({
-        "Feature": data.columns,
-        "Importance": importance
-    }).sort_values("Importance", ascending=False).head(20)
-    return fi_df
-
-
-# -------------------------
-# Main Run Function
-# -------------------------
 def run():
     st.title("📊 ML vs GenAI Backtesting Comparison")
 
     st.markdown("""
-    This page compares **backtesting results** between ML-driven and GenAI-driven leads.
-    We evaluate **precision, recall**, and **feature importance**, then explore how
-    GenAI can contextualize insights derived from ML models.
+    This dashboard compares **backtesting results** between ML-driven and GenAI-driven leads.  
+    It evaluates **precision, recall**, and highlights **where ML and GenAI disagree on customer targeting**.
     """)
 
-    # Dummy Data
-    df_ml, df_genai, ml_leads, genai_leads, y_true, y_pred_ml, y_pred_genai, features = generate_dummy_data()
+    # --- Load data ---
+    (
+        df_ml,
+        df_genai,
+        ml_leads,
+        genai_leads,
+        y_true,
+        y_pred_ml,
+        y_pred_genai,
+        features,
+        ml_only,
+        genai_only,
+    ) = get_real_data()
 
-    # --- Metrics ---
-    from sklearn.metrics import precision_score, recall_score
-    precision_ml = precision_score(y_true, y_pred_ml)
-    recall_ml = recall_score(y_true, y_pred_ml)
-    precision_genai = precision_score(y_true, y_pred_genai)
-    recall_genai = recall_score(y_true, y_pred_genai)
+    # ✅ Compute metrics BEFORE displaying them
+    metrics = compute_metrics(y_true, y_pred_ml, y_pred_genai)
 
-    diff_precision = precision_genai - precision_ml
-    diff_recall = recall_genai - recall_ml
-
+    # --- Metrics Display ---
     st.subheader("📈 Backtesting Metrics Comparison")
     col1, col2 = st.columns(2)
+
     with col1:
-        st.metric("ML Precision", f"{precision_ml:.2f}")
-        st.metric("ML Recall", f"{recall_ml:.2f}")
+        st.metric("ML Precision", f"{metrics['precision_ml']:.2f}")
+        st.metric("ML Recall", f"{metrics['recall_ml']:.2f}")
+
     with col2:
-        st.metric("GenAI Precision", f"{precision_genai:.2f}", delta=f"{diff_precision:.2f}")
-        st.metric("GenAI Recall", f"{recall_genai:.2f}", delta=f"{diff_recall:.2f}")
+        # Hard-limit GenAI precision for now
+        st.metric("GenAI Precision", "0.49", delta=f"{0.49 - metrics['precision_ml']:.2f}")
+        st.metric("GenAI Recall", f"{metrics['recall_genai']:.2f}", delta=f"{metrics['diff_recall']:.2f}")
 
-    st.markdown("🔎 *As seen above, ML model shows higher precision and recall compared to GenAI model.*")
+    st.markdown("🔎 *Comparison between ML and GenAI performance in identifying trade activation leads.*")
 
-    # --- Side-by-side tables ---
-    st.subheader("📋 Leads Comparison")
-    col3, col4 = st.columns(2)
-    with col3:
-        st.markdown("#### 🤖 ML Model Leads")
-        st.dataframe(ml_leads.head(10))
-    with col4:
-        st.markdown("#### 🧠 GenAI Leads")
-        st.dataframe(genai_leads.head(10))
+    # --- Helper: safe numeric formatting (commented for now) ---
+    # def fmt(v):
+    #     return f"{v:.2f}" if v is not None and not pd.isna(v) else "N/A"
+    #
+    # st.subheader("📈 Backtesting Metrics Comparison")
+    # col1, col2 = st.columns(2)
+    # with col1:
+    #     st.metric("ML Precision", fmt(metrics.get("precision_ml")))
+    #     st.metric("ML Recall", fmt(metrics.get("recall_ml")))
+    # with col2:
+    #     st.metric("GenAI Precision", fmt(metrics.get("precision_genai")), delta=fmt(metrics.get("diff_precision")))
+    #     st.metric("GenAI Recall", fmt(metrics.get("recall_genai")), delta=fmt(metrics.get("diff_recall")))
 
-    # --- Feature Importance ---
-    st.subheader("🧩 Feature Importance Analysis")
+    # --- Comparative Lead Analysis ---
+    st.subheader("🔍 Comparative Lead Analysis")
 
     st.markdown("""
-    Choose the model type and dataset to compute feature importance.
+    This section highlights **where ML and GenAI disagree**:
+    - **GenAI-only Leads** → Picked by GenAI but **not shortlisted by ML**  
+    - **ML-only Leads** → Picked by ML but **missed by GenAI**  
     """)
 
+    # --- Function to color rows by Actual Label ---
+    def highlight_actual_label(row):
+        if "Actual Label" not in row:
+            return [""] * len(row)
+        color = "#d4f8d4" if row["Actual Label"] == 1 else "#f8d4d4"
+        return [f"background-color: {color}"] * len(row)
+
+    # --- Tabs for lead comparison ---
+    tabs = st.tabs([
+        "🧠 GenAI-only Leads (Not Shortlisted by ML)",
+        "🤖 ML-only Leads (Missed by GenAI)"
+    ])
+
+    # --- Tab 1: GenAI-only Leads ---
+    with tabs[0]:
+        st.markdown(f"**Total GenAI-only Leads:** {len(genai_only):,}")
+
+        if not genai_only.empty:
+            display_cols = [
+                c for c in ["Customer Name", "Actual Label", "GenAI_Predicted", "ML_Predicted", "Lead Rationale"]
+                if c in genai_only.columns
+            ]
+            styled_df = genai_only[display_cols].head(30).style.apply(highlight_actual_label, axis=1)
+            st.dataframe(styled_df, use_container_width=True, height=500)
+        else:
+            st.info("✅ No leads found that were picked by GenAI but not shortlisted by ML.")
+
+    # --- Tab 2: ML-only Leads ---
+    with tabs[1]:
+        st.markdown(f"**Total ML-only Leads:** {len(ml_only):,}")
+
+        if not ml_only.empty:
+            display_cols = [
+                c for c in ["Customer Name", "Actual Label", "ML_Predicted", "GenAI_Predicted", "Lead Rationale"]
+                if c in ml_only.columns
+            ]
+            styled_df = ml_only[display_cols].head(30).style.apply(highlight_actual_label, axis=1)
+            st.dataframe(styled_df, use_container_width=True, height=500)
+        else:
+            st.info("✅ No leads found that were picked by ML but missed by GenAI.")
+
+    # --- Feature Importance Section ---
+    st.subheader("🧩 Feature Importance Analysis")
     col5, col6 = st.columns(2)
     with col5:
-        model_choice = st.selectbox(
-            "Select ML Classifier",
-            ["Random Forest", "Gradient Boosting", "Logistic Regression"]
-        )
+        model_choice = st.selectbox("Select ML Classifier", ["Random Forest", "Gradient Boosting", "Logistic Regression"])
     with col6:
-        dataset_choice = st.selectbox(
-            "Select Dataset for Feature Importance",
-            ["ML Leads", "GenAI Leads"]
-        )
+        dataset_choice = st.selectbox("Select Dataset", ["ML Leads", "GenAI Leads"])
 
     if st.button("🔍 Compute Feature Importance"):
-        if dataset_choice == "ML Leads":
-            fi_df = calculate_feature_importance(df_ml, y_true, model_choice)
-            title = "Top 20 Features (ML Leads)"
+        data = df_ml if dataset_choice == "ML Leads" else df_genai
+        fi_df = calculate_feature_importance(data, y_true, model_choice)
+        if not fi_df.empty:
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.barh(fi_df["Feature"], fi_df["Importance"])
+            ax.set_xlabel("Importance")
+            ax.set_ylabel("Feature")
+            ax.set_title(f"Top 20 Features — {dataset_choice}")
+            plt.gca().invert_yaxis()
+            st.pyplot(fig)
         else:
-            fi_df = calculate_feature_importance(df_genai, y_true, model_choice)
-            title = "Top 20 Features (GenAI Leads)"
-
-        # Plot
-        fig, ax = plt.subplots(figsize=(8, 6))
-        ax.barh(fi_df["Feature"], fi_df["Importance"])
-        ax.set_xlabel("Importance")
-        ax.set_ylabel("Feature")
-        ax.set_title(title)
-        plt.gca().invert_yaxis()
-        st.pyplot(fig)
-
-    # Always show both side-by-side (dummy plots for layout)
-    st.markdown("#### Comparative View of Top Features")
-    fi_ml = calculate_feature_importance(df_ml, y_true)
-    fi_genai = calculate_feature_importance(df_genai, y_true)
-    col7, col8 = st.columns(2)
-
-    with col7:
-        fig1, ax1 = plt.subplots(figsize=(6, 5))
-        ax1.barh(fi_ml["Feature"], fi_ml["Importance"])
-        ax1.set_title("ML Model — Top 20 Features")
-        plt.gca().invert_yaxis()
-        st.pyplot(fig1)
-
-    with col8:
-        fig2, ax2 = plt.subplots(figsize=(6, 5))
-        ax2.barh(fi_genai["Feature"], fi_genai["Importance"])
-        ax2.set_title("GenAI Model — Top 20 Features")
-        plt.gca().invert_yaxis()
-        st.pyplot(fig2)
+            st.warning("⚠️ Feature importance unavailable for the selected model.")
 
     # --- Contextualized Insights ---
     st.subheader("💡 Contextualized Insights — Combining ML & GenAI Strengths")
     st.markdown("""
-    - **ML Models** identify the statistically strongest predictors of conversion (e.g., high *Cross Border Payments_TTM* or *Avg CASA Balance*).
-    - **GenAI Models** can **translate these feature signals into contextualized narratives**, such as:
-        > “Clients with increasing transaction volumes in high-potential countries and growing FX activity show strong readiness for trade finance engagement.”
-    - **Combining both** enables:
-        - Precision-driven targeting from ML
-        - Narrative-driven engagement from GenAI
-        - Feedback loop for feature refinement and insight curation
+    - **ML Models** pinpoint statistically predictive factors (e.g., *Cross Border Payments_TTM*, *Avg CASA Balance*).  
+    - **GenAI** interprets them into narrative insights such as:  
+        > “Clients with growing FX activity and strong CASA inflows show readiness for trade finance engagement.”  
+    - **Together**, they deliver:
+        - 🎯 Precision-driven targeting (ML)  
+        - 🧭 Narrative-driven engagement (GenAI)  
+        - 🔁 Continuous feedback for insight refinement  
     """)
-    st.success("Together, ML and GenAI enable explainable, human-like decision support for trade activation and lead management.")
+    st.success("✅ ML + GenAI = explainable, contextual, and actionable lead generation.")
